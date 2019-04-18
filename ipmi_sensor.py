@@ -49,8 +49,8 @@ class MonitoredSensorsConfig:
         self.sensor_regexp = list(map(lambda x: re.compile('^'+x[0]+'\s*\|\s*'+x[1]+'\s*\|.*\|\s*(\d*)\D\\|*'), sensor_list))
 
     def check(self):
-        out, err = process_cmd(['sudo', 'ipmitool', 'sdr', 'elist'])
-        out = out.decode("utf-8") 
+        out, err = process_cmd(['ipmitool', 'sdr', 'elist'])
+        out = out.decode("utf-8")
         unverified_sensors = list(map(lambda x: (x[0], re.compile('^'+x[0]+'\s*|\s*'+x[1]+'\s*|')), self.sensor_list))
 
         for line in out.split('\n'):
@@ -81,9 +81,8 @@ class Config:
     
     def check(self):
         #:TODO self.monitored_sensors_config.check(), self.mongo_config.check()
-        self.mongo_config.check()
         self.monitored_sensors_config.check()
-
+        self.mongo_config.check()
 def arg_parser_init():
     """ initialize argument parser"""
     parser = argparse.ArgumentParser(
@@ -112,12 +111,11 @@ def create_config(args):
     mongo = MongoConfig(args.output_uri, args.output_db, args.output_collection)
     sensors = MonitoredSensorsConfig(list(zip(args.s, args.i)))
     config = Config(args.frequency, args.verbose, args.name, mongo, sensors)
-    config.check()
     return config
 
 
 def measure(sensor_name):
-    p =  subprocess.Popen(['sudo', 'ipmitool', 'sensor', 'reading', sensor_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    p =  subprocess.Popen(['ipmitool', 'sensor', 'reading', sensor_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     ts = time.time()
     p.wait()
     out, err = p.communicate()
@@ -136,7 +134,7 @@ def extract_measure(sensors, sensor_regexps):
     """
     sensors = copy(sensors)
     sensor_regexps = copy(sensor_regexps)
-    p =  subprocess.Popen(['sudo', 'ipmitool', 'sdr', 'elist'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    p =  subprocess.Popen(['ipmitool', 'sdr', 'elist'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     ts = time.time()
     p.wait()
     out, err = p.communicate()
@@ -155,10 +153,10 @@ def extract_measure(sensors, sensor_regexps):
                     'timestamp' : ts,
                     'value': int(m.group(1))
                 }
-            result.append(val)
-            sensors.pop(i)
-            sensor_regexps.pop(i)
-            break
+                result.append(val)
+                sensors.pop(i)
+                sensor_regexps.pop(i)
+                break
             
     return result
                 
@@ -166,7 +164,7 @@ def extract_measure(sensors, sensor_regexps):
 
 class DB:
     def __init__(self, mongo_config):
-        self.client = pymongo.MongoClient(mongo_config.uri)
+        self.client = pymongo.MongoClient(mongo_config.uri, serverSelectionTimeoutMS=5000)
         self.client.db_name.command('ping')
 
         self.db = self.client[mongo_config.db]
@@ -183,6 +181,7 @@ config.check()
 db = DB(config.mongo_config)
 
 t = time.time()
+
 while True:
     if time.time() - t > config.frequency:
         for val in extract_measure(config.monitored_sensors_config.sensor_list, config.monitored_sensors_config.sensor_regexp):
